@@ -1,0 +1,38 @@
+BIN=lttng-ust-benchmarks basic-benchmark basic-benchmark-ust \
+    sha2-benchmark sha2-benchmark-ust
+CFLAGS=-std=gnu99 -g -O0 -Wall -D_GNU_SOURCE
+LDFLAGS=-lrt -ldl
+UST_FLAGS=-DWITH_UST -llttng-ust
+ARTIFACTS=message.tp.c message.tp.h sum.tp.c sum.tp.h \
+          benchmarks.json benchmarks.properties
+
+.PHONY: all clean
+
+all: $(BIN)
+
+lttng-ust-benchmarks: lttng-ust-benchmarks.c shared_events.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+
+basic-benchmark: basic-benchmark.c shared_events.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+
+basic-benchmark-ust: basic-benchmark.c shared_events.o sum.tp.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS) $(UST_FLAGS)
+
+sha2-benchmark: sha2-benchmark.c shared_events.o sha2.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+
+sha2-benchmark-ust: sha2-benchmark.c shared_events.o message.tp.o sha2-ust.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS) $(UST_FLAGS)
+
+sha2-ust.o: sha2.c
+	$(CC) -c -o $@ $^ $(CFLAGS) $(LDFLAGS) $(UST_FLAGS)
+
+sha2.o: sha2.c
+	$(CC) -c -o $@ $^ $(CFLAGS) $(LDFLAGS)
+
+%.tp.o: %.tp
+	lttng-gen-tp $^ -o $<.o -o $<.c -o $<.h
+
+clean:
+	rm -f $(BIN) $(ARTIFACTS) *.o

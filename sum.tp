@@ -1,0 +1,9 @@
+TRACEPOINT_EVENT(
+	benchmark_tracepoint,
+	sum,
+	TP_ARGS(int, x, int, y),
+
+	TP_FIELDS (
+		ctf_integer(int, z, x+y)
+	)
+)

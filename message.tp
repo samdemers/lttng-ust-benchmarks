@@ -1,0 +1,9 @@
+TRACEPOINT_EVENT(
+	benchmark_tracepoint,
+	message,
+	TP_ARGS(char *, text),
+
+	TP_FIELDS (
+		ctf_string(message, text)
+	)
+)
