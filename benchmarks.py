@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 import collections
-import json, pprint, platform, subprocess, tempfile, time, uuid
+import json, os, pprint, platform, subprocess, tempfile, uuid
 import lttng, babeltrace as bt
 
 runner_bin	= "./lttng-ust-benchmarks"
-props_out   = "./benchmarks.properties"
+props_dir   = "./jenkins_plot_data"
 js_out      = "./benchmarks.json"
 
 def lttng_start(trace_path, session_name):
@@ -47,13 +47,13 @@ def lttng_start(trace_path, session_name):
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
 
 def lttng_stop(session_name):
-	ret = lttng.destroy(session_name)
+	ret = lttng.stop(session_name)
 	if ret < 0:
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
 
-	# Workaround: wait for the trace to be written on disk to avoid segfault
-	# when reading it too soon with Babeltrace
-	time.sleep(1)
+	ret = lttng.destroy(session_name)
+	if ret < 0:
+		raise RuntimeError("LTTng: " + lttng.strerror(ret))
 
 def events_in_trace(trace_path):
 	trace_collection = bt.TraceCollection()
@@ -127,26 +127,34 @@ def run_benchmarks(benchmarks):
 
 	return results
 
-def write_properties_internal(prefix, data, f):
+def flatten_dict_internal(prefix, data, dst):
 	if issubclass(data.__class__, str):
-		f.write(prefix + " = " + data + "\n")		
+		dst[prefix] = data
 	elif issubclass(data.__class__, collections.Mapping):
 		for key in data.keys():
-			fullprefix = prefix + "." if len(prefix) > 0 else ""
-			write_properties_internal(fullprefix + key, data[key], f)
+			fullprefix = prefix + "." + key if len(prefix) > 0 else key
+			flatten_dict_internal(fullprefix, data[key], dst)
 	elif issubclass(data.__class__, collections.Iterable):
 		i = 0
 		for value in data:
-			fullprefix = prefix + "[" + str(i) + "]"
-			write_properties_internal(fullprefix, value, f)
+			fullprefix = prefix + "." + str(i)
+			flatten_dict_internal(fullprefix, value, dst)
 			i += 1
 	else:
-		f.write(prefix + " = " + str(data) + "\n")
+		dst[prefix] = str(data)
 
-def write_properties(data, filename):
-	f = open(filename, "w")
-	write_properties_internal("", data, f)
-	f.close()
+def flatten_dict(data):
+	dst = dict()
+	flatten_dict_internal("", data, dst)
+	return dst
+
+def write_plot_properties(data, dst_dir):
+	os.makedirs(dst_dir, 0o777, True)
+	flat_data = flatten_dict(data)
+	for key in flat_data:
+		f = open(dst_dir + "/" + key + ".properties", "w")
+		f.write("YVALUE=" + flat_data[key] + "\n")
+		f.close()
 
 def write_js(data, filename):
 	f = open(filename, "w")
@@ -172,7 +180,7 @@ def main():
 			platform.uname()
 			))
 	}
-	write_properties(results, props_out)
+	write_plot_properties(results["data"], props_dir)
 	write_js(results, js_out)
 		
 if __name__ == "__main__":

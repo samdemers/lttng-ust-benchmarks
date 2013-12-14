@@ -4,7 +4,7 @@ CFLAGS=-std=gnu99 -g -O0 -Wall -D_GNU_SOURCE
 LDFLAGS=-lrt -ldl
 UST_FLAGS=-DWITH_UST -llttng-ust
 ARTIFACTS=message.tp.c message.tp.h sum.tp.c sum.tp.h \
-          benchmarks.json benchmarks.properties
+          benchmarks.json jenkins_plot_data
 
 .PHONY: all clean
 
@@ -35,4 +35,4 @@ sha2.o: sha2.c
 	lttng-gen-tp $^ -o $<.o -o $<.c -o $<.h
 
 clean:
-	rm -f $(BIN) $(ARTIFACTS) *.o
+	rm -rf $(BIN) $(ARTIFACTS) *.o
