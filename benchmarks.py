@@ -110,7 +110,7 @@ def run_benchmarks(benchmarks):
 				"args":         benchmark["ust"],
 				"start_time":   ust_start,
 				"run_time":	    ust_run,
-				"ns_per_event": (ust_run - base_run)*1000000 / event_count,
+				"ns_per_event": (ust_run - base_run)*10E9 / event_count,
 				"start_overhead_s":   ust_start_overhead,
 				"start_overhead_pct": ust_start_overhead * 100 / base_start
 				},
@@ -119,7 +119,7 @@ def run_benchmarks(benchmarks):
 				"start_time":   ust_en_start,
 				"run_time":	    ust_en_run,
 				"event_count":  event_count,
-				"ns_per_event": (ust_en_run - base_run)*1000000 / event_count,
+				"ns_per_event": (ust_en_run - base_run)*10E9 / event_count,
 				"start_overhead_s":   ust_en_start_overhead,
 				"start_overhead_pct": ust_en_start_overhead * 100 / base_start,
 				}
