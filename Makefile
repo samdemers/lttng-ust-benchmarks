@@ -1,8 +1,8 @@
 BIN        = lttng-ust-benchmarks basic-benchmark basic-benchmark-ust \
              sha2-benchmark sha2-benchmark-ust
-CFLAGS    += -std=gnu99 -g -O0 -Wall -D_GNU_SOURCE -DLGPL_SOURCE
+CFLAGS    += -std=gnu99 -g -O0 -Wall -D_GNU_SOURCE -D_LGPL_SOURCE
 LDFLAGS   += -lrt -ldl
-UST_FLAGS  = -DWITH_UST -llttng-ust
+UST_FLAGS  = -DWITH_UST -llttng-ust -lurcu-bp
 ARTIFACTS  = message.tp.c message.tp.h sum.tp.c sum.tp.h \
              benchmarks.json jenkins_plot_data
 
