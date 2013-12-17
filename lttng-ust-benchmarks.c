@@ -17,6 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,17 +46,6 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 
-	int child_argc = argc - 1;
-	char **child_argv = (char **)malloc((child_argc + 1) * sizeof(char *));
-	if (!child_argv) {
-		perror("malloc");
-		exit(EXIT_FAILURE);
-	}
-	for (int i = 0; i < child_argc; i++) {
-		child_argv[i] = argv[i+1];
-	}
-	child_argv[child_argc] = NULL;
-
 	atexit(shared_events_delete);
 	if (shared_events_clear() == -1) {
 		exit(EXIT_FAILURE);
@@ -69,14 +59,12 @@ int main(int argc, char **argv) {
 		/* Child */
 		shared_events_add("exec");
 
-		if (execv(child_argv[0], child_argv) == -1) {
+		if (execv(argv[1], &argv[1]) == -1) {
 			perror("exec");
 		}
 		_exit(EXIT_FAILURE);
 	} else {
 		/* Parent */
-		free(child_argv);
-
 		int child_status;
 		if (waitpid(pid, &child_status, 0) == -1) {
 			perror("waitpid");
