@@ -197,7 +197,10 @@ def cleanup():
 		# Nothing to do: we may not have launched the sessiond
 		pass
 
-	shutil.rmtree(tmp_dir)
+	# Ignore errors when deleting the temporary directory (otherwise
+	# an exception may be raised if the sessiond removes its pidfile
+	# while rmtree() is running).
+	shutil.rmtree(tmp_dir, True)
 		
 if __name__ == "__main__":
 	try:
