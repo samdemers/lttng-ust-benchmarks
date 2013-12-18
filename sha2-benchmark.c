@@ -20,27 +20,70 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef WITH_UST
-#include <lttng/tracepoint.h>
-#endif
-
 #include "sha2.h"
 #include "shared_events.h"
 
-#define BUFFER_SIZE (1<<20)
+#ifdef WITH_UST
+#include <lttng/tracepoint.h>
+#include "message.tp.h"
+#endif
+
+#define BUFFER_SIZE	(1<<10)
+#define HASH_SIZE	32
+
+
+/*
+ * Not declared static so the compile unit cannot assume is it never
+ * used.
+ */
 unsigned char buffer[BUFFER_SIZE];
 
-int main(int argc, char **argv) {
-	if (shared_events_add("main") == -1)
-		exit(EXIT_FAILURE);
+static
+void print_usage(int argc, char **argv)
+{
+	fprintf(stderr, "Usage: %s [<iterations>]\n", argv[0]);
+}
 
+int main(int argc, char **argv)
+{
+	unsigned char hash[HASH_SIZE];
+	long iterations;
 	sha2_context ctx;
+	unsigned int i;
+
+	if (shared_events_add("main")) {
+		exit(EXIT_FAILURE);
+	}
+
+	if (argc < 2) {
+		print_usage(argc, argv);
+		exit(EXIT_FAILURE);
+	}
+
+	iterations = strtol(argv[1], (char **) NULL, 10);
+	if (iterations <= 0) {
+		print_usage(argc, argv);
+		exit(EXIT_FAILURE);
+	}
+
 	sha2_starts(&ctx, 0);
 
-	shared_events_add("start");
-	sha2_update(&ctx, buffer, BUFFER_SIZE);
-	shared_events_add("end");
+	if (shared_events_add("start")) {
+		exit(EXIT_FAILURE);
+	}
 
-	unsigned char hash[32];
+	for (i = 0; i < iterations; i++) {
+		sha2_update(&ctx, buffer, BUFFER_SIZE);
+#ifdef WITH_UST
+		tracepoint(benchmark_tracepoint, message, "Hello");
+#endif
+	}
+
+	if (shared_events_add("end")) {
+		exit(EXIT_FAILURE);
+	}
+
 	sha2_finish(&ctx, hash);
+
+	exit(EXIT_SUCCESS);
 }

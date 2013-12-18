@@ -1,6 +1,6 @@
 BIN        = lttng-ust-benchmarks basic-benchmark basic-benchmark-ust \
              sha2-benchmark sha2-benchmark-ust
-CFLAGS    += -std=gnu99 -g -O0 -Wall -D_GNU_SOURCE -D_LGPL_SOURCE
+CFLAGS    += -std=gnu99 -g -O2 -Wall -D_GNU_SOURCE -D_LGPL_SOURCE -DNDEBUG
 LDFLAGS   += -lrt -ldl
 UST_FLAGS  = -DWITH_UST -llttng-ust -lurcu-bp
 ARTIFACTS  = message.tp.c message.tp.h sum.tp.c sum.tp.h \
@@ -30,6 +30,9 @@ sha2-ust.o: sha2.c
 
 sha2.o: sha2.c
 	$(CC) -c -o $@ $^ $(CFLAGS) $(LDFLAGS)
+
+# Override implicit rules.
+%.tp:;
 
 %.tp.o: %.tp
 	CFLAGS="$(CFLAGS)" lttng-gen-tp $^ -o $<.o -o $<.c -o $<.h

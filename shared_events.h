@@ -24,14 +24,14 @@
 
 #define MAX_EVENT_NAME_LENGTH 256
 
-typedef struct {
-	struct timeval tv;
+struct shared_event {
+	struct timespec ts;
 	char name[MAX_EVENT_NAME_LENGTH];
-} shared_event_t;
+};
 
-void shared_events_delete();
-int shared_events_clear();
+void shared_events_delete(void);
+int shared_events_clear(void);
 int shared_events_add(const char *name);
-shared_event_t *shared_events_read();
+struct shared_event *shared_events_read(void);
 	
 #endif /* SHARED_EVENTS_H */

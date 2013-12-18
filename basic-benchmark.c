@@ -27,31 +27,58 @@
 
 #include "shared_events.h"
 
-int main(int argc, char **argv) {
-	if (shared_events_add("main") == -1)
-		exit(EXIT_FAILURE);
+/*
+ * Add side effect to loop to ensure it is not completely optimized away
+ * by the compiler. It is _not_ static on purpose, so the compile unit
+ * cannot assume it is not touched elsewhere.
+ */
+int side_effect[2];
 
-	if (argc < 2)
-		exit(EXIT_SUCCESS);
+static
+void print_usage(int argc, char **argv)
+{
+	fprintf(stderr, "Usage: %s [<iterations>]\n", argv[0]);
+}
 
-	long iterations = strtol(argv[1], (char **)NULL, 10);
-	if (iterations <= 0) {
-		fprintf(stderr, "Usage: %s [<iterations>]\n", argv[0]);
+int main(int argc, char **argv)
+{
+	long iterations;
+	int x = 0, y = 1, i;
+
+	if (shared_events_add("main")) {
 		exit(EXIT_FAILURE);
 	}
 
-	shared_events_add("start");
+	if (argc < 2) {
+		print_usage(argc, argv);
+		exit(EXIT_FAILURE);
+	}
 
-	int x = 0;
-	int y = 1;
-	for (int i = 0; i < iterations; i++) {
+	iterations = strtol(argv[1], (char **) NULL, 10);
+	if (iterations <= 0) {
+		print_usage(argc, argv);
+		exit(EXIT_FAILURE);
+	}
+
+	if (shared_events_add("start")) {
+		exit(EXIT_FAILURE);
+	}
+
+	for (i = 0; i < iterations; i++) {
 		int z = x + y;
+
 		x = y;
 		y = z;
+		side_effect[0] = x;
+		side_effect[1] = y;
 #ifdef WITH_UST
 		tracepoint(benchmark_tracepoint, sum, x, y);
 #endif
 	}
 
-	shared_events_add("end");
+	if (shared_events_add("end")) {
+		exit(EXIT_FAILURE);
+	}
+
+	exit(EXIT_SUCCESS);
 }

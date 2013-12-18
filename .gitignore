@@ -16,3 +16,15 @@
 *.exe
 *.out
 *.app
+
+basic-benchmark
+basic-benchmark-ust
+*.json
+jenkins_plot_data/
+lttng-ust-benchmarks
+message.tp.c
+message.tp.h
+sha2-benchmark
+sha2-benchmark-ust
+sum.tp.c
+sum.tp.h

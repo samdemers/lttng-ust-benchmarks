@@ -27,25 +27,28 @@
 
 #include "shared_events.h"
 
-static void print_events() {
-	shared_event_t *event;
-	printf("{");
+static void print_events(void)
+{
+	struct shared_event *event;
 	int i = 0;
+
+	printf("{");
 	while ((event = shared_events_read())) {
-		printf("%c\n\t\"%s\": %lu.%06lu", i ? ',' : ' ',
-		       event->name, event->tv.tv_sec, event->tv.tv_usec);
+		printf("%c\n\t\"%s\": %lu.%09ld", i ? ',' : ' ',
+			event->name,
+			(unsigned long) event->ts.tv_sec,
+			event->ts.tv_nsec);
 		i++;
 	}
 	printf("\n}\n");
 }
 
-int main(int argc, char **argv) {
-
+int main(int argc, char **argv)
+{
 	if (argc < 2) {
 		fprintf(stderr, "Usage: %s <PROGRAM> [<ARGS>]\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
-
 	atexit(shared_events_delete);
 	if (shared_events_clear() == -1) {
 		exit(EXIT_FAILURE);
@@ -66,6 +69,7 @@ int main(int argc, char **argv) {
 	} else {
 		/* Parent */
 		int child_status;
+
 		if (waitpid(pid, &child_status, 0) == -1) {
 			perror("waitpid");
 			exit(EXIT_FAILURE);

@@ -2,9 +2,9 @@
 
 import collections
 import json, os, pprint, platform, subprocess, tempfile, uuid
-import lttng, babeltrace as bt
+import lttng
 
-runner_bin	= "./lttng-ust-benchmarks"
+runner_bin  = "./lttng-ust-benchmarks"
 props_dir   = "./jenkins_plot_data"
 js_out      = "./benchmarks.json"
 
@@ -15,7 +15,7 @@ def lttng_start(trace_path, session_name):
 		subprocess.check_call(daemon_cmd, shell=True)
 
 	lttng.destroy(session_name)
-	ret = lttng.create(session_name, trace_path) 
+	ret = lttng.create_snapshot(session_name, trace_path)
 	if ret < 0:
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
 
@@ -55,14 +55,6 @@ def lttng_stop(session_name):
 	if ret < 0:
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
 
-def events_in_trace(trace_path):
-	trace_collection = bt.TraceCollection()
-	trace_collection.add_traces_recursive(trace_path, "ctf")
-	count = 0
-	for event in trace_collection.events:
-		count += 1
-	return count
-
 def run_benchmark(args, with_ust = False):
 
 	if with_ust:
@@ -72,12 +64,10 @@ def run_benchmark(args, with_ust = False):
 
 	output = subprocess.check_output([runner_bin] + args)
 
-	event_count = 0
 	if with_ust:
 		lttng_stop(session_name)
-		event_count = events_in_trace(trace_path)
 
-	return json.loads(output.decode()), event_count
+	return json.loads(output.decode())
 
 def run_benchmarks(benchmarks):
 	results = {}
@@ -86,16 +76,16 @@ def run_benchmarks(benchmarks):
 		
 		benchmark = benchmarks[name]
 
-		base, _ = run_benchmark(benchmark["baseline"], False)
+		base = run_benchmark(benchmark["baseline"], False)
 		base_start  = base["main"] - base["exec"]
 		base_run    = base["end"] - base["start"]
 
-		ust, _ = run_benchmark(benchmark["ust"], False)
+		ust = run_benchmark(benchmark["ust"], False)
 		ust_start  = ust["main"] - ust["exec"]
 		ust_run    = ust["end"] - ust["start"]
 		ust_start_overhead = ust_start - base_start
 		
-		ust_en, event_count = run_benchmark(benchmark["ust"], True)
+		ust_en = run_benchmark(benchmark["ust"], True)
 		ust_en_start  = ust_en["main"] - ust_en["exec"]
 		ust_en_run    = ust_en["end"] - ust_en["start"]
 		ust_en_start_overhead = ust_en_start - base_start
@@ -104,22 +94,22 @@ def run_benchmarks(benchmarks):
 			"baseline": {
 				"args":	       benchmark["baseline"],
 				"start_time":  base_start,
-				"run_time":	   base_run
+				"run_time":    base_run
 				},
 			"tracing_disabled": {
 				"args":         benchmark["ust"],
 				"start_time":   ust_start,
-				"run_time":	    ust_run,
-				"ns_per_event": (ust_run - base_run)*1E9 / event_count,
+				"run_time":     ust_run,
+				"ns_per_event": (ust_run - base_run)*1E9 / benchmark["nr_loops"],
 				"start_overhead_s":   ust_start_overhead,
 				"start_overhead_pct": ust_start_overhead * 100 / base_start
 				},
 			"tracing_enabled": {
 				"args":	        benchmark["ust"],
 				"start_time":   ust_en_start,
-				"run_time":	    ust_en_run,
-				"event_count":  event_count,
-				"ns_per_event": (ust_en_run - base_run)*1E9 / event_count,
+				"run_time":     ust_en_run,
+				"event_count":  benchmark["nr_loops"],
+				"ns_per_event": (ust_en_run - base_run)*1E9 / benchmark["nr_loops"],
 				"start_overhead_s":   ust_en_start_overhead,
 				"start_overhead_pct": ust_en_start_overhead * 100 / base_start,
 				}
@@ -164,12 +154,20 @@ def write_js(data, filename):
 def main():
 	benchmarks = {
 		"basic": {
+			# number of loops here must match nr_loops
+			# below.
 			"baseline": ["basic-benchmark", "10000000"],
-			"ust":      ["basic-benchmark-ust", "10000000"]
+			"ust":      ["basic-benchmark-ust", "10000000"],
+
+			"nr_loops": 10000000
 			},
 		"sha2": {
-			"baseline": ["sha2-benchmark"],
-			"ust":      ["sha2-benchmark-ust"]
+			# number of loops here must match nr_loops
+			# below.
+			"baseline": ["sha2-benchmark", "1000000"],
+			"ust":      ["sha2-benchmark-ust", "1000000"],
+
+			"nr_loops": 1000000
 			}
 		}
 
