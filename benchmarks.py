@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 
 import collections
-import json, pprint, platform, tempfile, uuid
+import json, numbers, pprint, platform, tempfile, uuid
 import os, shutil, subprocess, signal
 import lttng
 
 runner_bin  = "./lttng-ust-benchmarks"
 props_dir   = "./jenkins_plot_data"
 js_out      = "./benchmarks.json"
+passes      = 3
 tmp_dir     = tempfile.mkdtemp()
 session_name     = str(uuid.uuid1())
 trace_path       = tmp_dir + "/" + session_name
@@ -134,7 +135,7 @@ def flatten_dict_internal(prefix, data, dst):
 			flatten_dict_internal(fullprefix, value, dst)
 			i += 1
 	else:
-		dst[prefix] = str(data)
+		dst[prefix] = data
 
 def flatten_dict(data):
 	dst = dict()
@@ -143,10 +144,10 @@ def flatten_dict(data):
 
 def write_plot_properties(data, dst_dir):
 	os.makedirs(dst_dir, 0o777, True)
-	flat_data = flatten_dict(data)
+	flat_data = data
 	for key in flat_data:
 		f = open(dst_dir + "/" + key + ".properties", "w")
-		f.write("YVALUE=" + flat_data[key] + "\n")
+		f.write("YVALUE=" + str(flat_data[key]) + "\n")
 		f.close()
 
 def write_js(data, filename):
@@ -161,7 +162,6 @@ def main():
 			# below.
 			"baseline": ["basic-benchmark", "10000000"],
 			"ust":      ["basic-benchmark-ust", "10000000"],
-
 			"nr_loops": 10000000
 			},
 		"sha2": {
@@ -169,19 +169,41 @@ def main():
 			# below.
 			"baseline": ["sha2-benchmark", "1000000"],
 			"ust":      ["sha2-benchmark-ust", "1000000"],
-
 			"nr_loops": 1000000
 			}
 		}
 
+	data = []
+	flat_data = []
+	all_keys = set()
+	for i in range(passes):
+		pass_data = run_benchmarks(benchmarks)
+		flat_pass_data = flatten_dict(pass_data)
+
+		data.append(pass_data)
+		flat_data.append(flat_pass_data)
+
+		all_keys |= flat_pass_data.keys()
+
+	avg_data = {}
+	for key in all_keys:
+		total = 0
+		count = 0
+		for flat_pass_data in flat_data:
+			if (isinstance(flat_pass_data[key], numbers.Number)):
+				total += flat_pass_data[key]
+				count += 1
+		if count > 0:
+			avg_data[key] = total / count
+
 	results = {
-		"data":     run_benchmarks(benchmarks),
+		"data":     data,
 		"platform": dict(zip(
 			("system", "node", "release", "version", "machine", "processor"),
 			platform.uname()
 			))
 	}
-	write_plot_properties(results["data"], props_dir)
+	write_plot_properties(avg_data, props_dir)
 	write_js(results, js_out)
 
 def cleanup():
