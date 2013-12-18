@@ -30,9 +30,10 @@
 /*
  * Add side effect to loop to ensure it is not completely optimized away
  * by the compiler. It is _not_ static on purpose, so the compile unit
- * cannot assume it is not touched elsewhere.
+ * cannot assume it is not touched elsewhere. Defined as volatile so the
+ * compiler does not perform any kind of write-combining.
  */
-int side_effect[2];
+volatile int side_effect[2];
 
 static
 void print_usage(int argc, char **argv)

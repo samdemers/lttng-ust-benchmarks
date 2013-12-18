@@ -31,17 +31,26 @@
 #define BUFFER_SIZE	(1<<10)
 #define HASH_SIZE	32
 
-
 /*
- * Not declared static so the compile unit cannot assume is it never
- * used.
+ * input_buffer is updated within the loop so the compiler cannot assume
+ * it is unchanged between loops.
  */
-unsigned char buffer[BUFFER_SIZE];
+static unsigned char input_buffer[BUFFER_SIZE];
 
 static
 void print_usage(int argc, char **argv)
 {
 	fprintf(stderr, "Usage: %s [<iterations>]\n", argv[0]);
+}
+
+static
+void update_buffer(unsigned char *buffer, size_t len, unsigned int v)
+{
+	unsigned int i;
+
+	for (i = 0; i < len; i++) {
+		input_buffer[i] = v ^ i;
+	}
 }
 
 int main(int argc, char **argv)
@@ -73,7 +82,8 @@ int main(int argc, char **argv)
 	}
 
 	for (i = 0; i < iterations; i++) {
-		sha2_update(&ctx, buffer, BUFFER_SIZE);
+		update_buffer(input_buffer, BUFFER_SIZE, i);
+		sha2_update(&ctx, input_buffer, BUFFER_SIZE);
 #ifdef WITH_UST
 		tracepoint(benchmark_tracepoint, message, "Hello");
 #endif
