@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 
 import collections
-import json, os, pprint, platform, subprocess, tempfile, uuid
+import json, pprint, platform, tempfile, uuid
+import os, shutil, subprocess, signal
 import lttng
 
 runner_bin  = "./lttng-ust-benchmarks"
 props_dir   = "./jenkins_plot_data"
 js_out      = "./benchmarks.json"
+tmp_dir     = tempfile.mkdtemp()
+session_name     = str(uuid.uuid1())
+trace_path       = tmp_dir + "/" + session_name
+sessiond_pidfile = tmp_dir + "/lttng-sessiond.pid"
 
-def lttng_start(trace_path, session_name):
-
+def lttng_start():
 	if lttng.session_daemon_alive() == 0:
-		daemon_cmd = "lttng-sessiond --daemonize --quiet"
+		daemon_cmd  = "lttng-sessiond --daemonize --quiet"
+		daemon_cmd += " --pidfile " + sessiond_pidfile
 		subprocess.check_call(daemon_cmd, shell=True)
 
 	lttng.destroy(session_name)
@@ -46,7 +51,7 @@ def lttng_start(trace_path, session_name):
 	if ret < 0:
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
 
-def lttng_stop(session_name):
+def lttng_stop():
 	ret = lttng.stop(session_name)
 	if ret < 0:
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
@@ -58,14 +63,12 @@ def lttng_stop(session_name):
 def run_benchmark(args, with_ust = False):
 
 	if with_ust:
-		session_name = str(uuid.uuid1())
-		trace_path = tempfile.mkdtemp() + "/" + session_name
-		lttng_start(trace_path, session_name)
+		lttng_start()
 
 	output = subprocess.check_output([runner_bin] + args)
 
 	if with_ust:
-		lttng_stop(session_name)
+		lttng_stop()
 
 	return json.loads(output.decode())
 
@@ -180,6 +183,26 @@ def main():
 	}
 	write_plot_properties(results["data"], props_dir)
 	write_js(results, js_out)
+
+def cleanup():
+	lttng.stop(session_name)
+	lttng.destroy(session_name)
+
+	try:
+		f = open(sessiond_pidfile, "r")
+		pid = int(f.readline())
+		f.close()
+		os.kill(pid, signal.SIGTERM)
+	except (OSError, IOError) as e:
+		# Nothing to do: we may not have launched the sessiond
+		pass
+
+	shutil.rmtree(tmp_dir)
 		
 if __name__ == "__main__":
-	main()
+	try:
+		main()
+	except KeyboardInterrupt:
+		pass
+	finally:
+		cleanup()
