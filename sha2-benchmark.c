@@ -64,7 +64,12 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	if (argc < 2) {
+	if (argc == 1) {
+		// We may just want to measure process startup time
+		exit(EXIT_SUCCESS);
+	}
+
+	if (argc > 2) {
 		print_usage(argc, argv);
 		exit(EXIT_FAILURE);
 	}

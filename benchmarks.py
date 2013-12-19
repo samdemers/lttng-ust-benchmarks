@@ -8,7 +8,6 @@ import lttng
 runner_bin  = "./lttng-ust-benchmarks"
 props_dir   = "./jenkins_plot_data"
 js_out      = "./benchmarks.json"
-passes      = 3
 tmp_dir     = tempfile.mkdtemp()
 session_name     = str(uuid.uuid1())
 trace_path       = tmp_dir + "/" + session_name
@@ -61,7 +60,7 @@ def lttng_stop():
 	if ret < 0:
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
 
-def run_benchmark(args, with_ust = False):
+def run_benchmark_tool(args, with_ust = False):
 
 	if with_ust:
 		lttng_start()
@@ -73,53 +72,61 @@ def run_benchmark(args, with_ust = False):
 
 	return json.loads(output.decode())
 
-def run_benchmarks(benchmarks):
-	results = {}
+def do_benchmark(benchmark):
 
-	for name in benchmarks.keys():
-		
-		benchmark = benchmarks[name]
+	if "nr_loops" in benchmark:
+		nr_loops = benchmark["nr_loops"]
+		args = [str(nr_loops)]
+	else:
+		nr_loops = None
+		args = []
 
-		base = run_benchmark(benchmark["baseline"], False)
-		base_start  = base["main"] - base["exec"]
-		base_run    = base["end"] - base["start"]
+	base         = run_benchmark_tool(benchmark["baseline"] + args, False)
+	base_start   = base["main"] - base["exec"]
 
-		ust = run_benchmark(benchmark["ust"], False)
-		ust_start  = ust["main"] - ust["exec"]
-		ust_run    = ust["end"] - ust["start"]
-		ust_start_overhead = ust_start - base_start
-		
-		ust_en = run_benchmark(benchmark["ust"], True)
-		ust_en_start  = ust_en["main"] - ust_en["exec"]
-		ust_en_run    = ust_en["end"] - ust_en["start"]
-		ust_en_start_overhead = ust_en_start - base_start
+	ust          = run_benchmark_tool(benchmark["ust"] + args, False)
+	ust_start    = ust["main"] - ust["exec"]
+	ust_start_overhead = ust_start - base_start
 
-		results[name] = {
-			"baseline": {
-				"args":	       benchmark["baseline"],
-				"start_time":  base_start,
-				"run_time":    base_run
-				},
-			"tracing_disabled": {
-				"args":         benchmark["ust"],
-				"start_time":   ust_start,
-				"run_time":     ust_run,
-				"ns_per_event": (ust_run - base_run)*1E9 / benchmark["nr_loops"],
-				"start_overhead_s":   ust_start_overhead,
-				"start_overhead_pct": ust_start_overhead * 100 / base_start
-				},
-			"tracing_enabled": {
-				"args":	        benchmark["ust"],
-				"start_time":   ust_en_start,
-				"run_time":     ust_en_run,
-				"event_count":  benchmark["nr_loops"],
-				"ns_per_event": (ust_en_run - base_run)*1E9 / benchmark["nr_loops"],
-				"start_overhead_s":   ust_en_start_overhead,
-				"start_overhead_pct": ust_en_start_overhead * 100 / base_start,
-				}
+	ust_en       = run_benchmark_tool(benchmark["ust"] + args, True)
+	ust_en_start = ust_en["main"] - ust_en["exec"]
+	ust_en_start_overhead = ust_en_start - base_start
+
+	if nr_loops is not None:
+		base_run            = base["end"] - base["start"]
+		ust_run             = ust["end"] - ust["start"]
+		ust_en_run          = ust_en["end"] - ust_en["start"]		
+		ust_ns_per_event    = (ust_run - base_run)*1E9 / nr_loops
+		ust_en_ns_per_event = (ust_en_run - base_run)*1E9 / nr_loops
+	else:
+		base_run            = None
+		ust_run             = None
+		ust_en_run          = None
+		ust_ns_per_event    = None
+		ust_en_ns_per_event = None
+
+	return {"baseline": {
+			"args":	       benchmark["baseline"] + args,
+			"start_time":  base_start,
+			"run_time":    base_run
+			},
+		"tracing_disabled": {
+			"args":         benchmark["ust"] + args,
+			"start_time":   ust_start,
+			"run_time":     ust_run,
+			"ns_per_event": ust_ns_per_event,
+			"start_overhead_s":   ust_start_overhead,
+			"start_overhead_pct": ust_start_overhead * 100 / base_start
+			},
+		"tracing_enabled": {
+			"args":	        benchmark["ust"] + args,
+			"start_time":   ust_en_start,
+			"run_time":     ust_en_run,
+			"ns_per_event": ust_en_ns_per_event,
+			"start_overhead_s":   ust_en_start_overhead,
+			"start_overhead_pct": ust_en_start_overhead * 100 / base_start,
 			}
-
-	return results
+		}
 
 def flatten_dict_internal(prefix, data, dst):
 	if issubclass(data.__class__, str):
@@ -134,7 +141,7 @@ def flatten_dict_internal(prefix, data, dst):
 			fullprefix = prefix + "." + str(i)
 			flatten_dict_internal(fullprefix, value, dst)
 			i += 1
-	else:
+	elif data is not None:
 		dst[prefix] = data
 
 def flatten_dict(data):
@@ -156,33 +163,38 @@ def write_js(data, filename):
 	f.close()
 
 def main():
-	benchmarks = {
-		"basic": {
-			# number of loops here must match nr_loops
-			# below.
-			"baseline": ["basic-benchmark", "10000000"],
-			"ust":      ["basic-benchmark-ust", "10000000"],
-			"nr_loops": 10000000
-			},
-		"sha2": {
-			# number of loops here must match nr_loops
-			# below.
-			"baseline": ["sha2-benchmark", "1000000"],
-			"ust":      ["sha2-benchmark-ust", "1000000"],
-			"nr_loops": 1000000
-			}
-		}
-
 	data = []
+
+	full_passes = 5
+	fast_passes = 100
+
+	for i in range(full_passes):
+		params = { "baseline": ["basic-benchmark"],
+			   "ust":      ["basic-benchmark-ust"],
+			   "nr_loops": 10000000 }
+		data.append({ "basic": do_benchmark(params) })
+
+	for i in range(full_passes):
+		params = { "baseline": ["sha2-benchmark"],
+			   "ust":      ["sha2-benchmark-ust"],
+			   "nr_loops": 1000000 }
+		data.append({ "sha2": do_benchmark(params) })
+
+	for i in range(fast_passes):
+		params = { "baseline": ["basic-benchmark"],
+			   "ust":      ["basic-benchmark-ust"]}
+		data.append({ "basic": do_benchmark(params) })
+
+	for i in range(fast_passes):
+		params = { "baseline": ["sha2-benchmark"],
+			   "ust":      ["sha2-benchmark-ust"]}
+		data.append({ "sha2": do_benchmark(params) })
+
 	flat_data = []
 	all_keys = set()
-	for i in range(passes):
-		pass_data = run_benchmarks(benchmarks)
+	for pass_data in data:
 		flat_pass_data = flatten_dict(pass_data)
-
-		data.append(pass_data)
 		flat_data.append(flat_pass_data)
-
 		all_keys |= flat_pass_data.keys()
 
 	avg_data = {}
@@ -190,7 +202,8 @@ def main():
 		total = 0
 		count = 0
 		for flat_pass_data in flat_data:
-			if (isinstance(flat_pass_data[key], numbers.Number)):
+			value = flat_pass_data.get(key)
+			if (isinstance(value, numbers.Number)):
 				total += flat_pass_data[key]
 				count += 1
 		if count > 0:
@@ -198,6 +211,7 @@ def main():
 
 	results = {
 		"data":     data,
+		"average":  avg_data,
 		"platform": dict(zip(
 			("system", "node", "release", "version", "machine", "processor"),
 			platform.uname()
