@@ -22,7 +22,11 @@
 
 #ifdef WITH_UST
 #include <lttng/tracepoint.h>
+#ifdef USE_GENERATED_TP
+#include "generated_tp.h"
+#else
 #include "sum.tp.h"
+#endif
 #endif
 
 #include "shared_events.h"
@@ -78,7 +82,11 @@ int main(int argc, char **argv)
 		side_effect[0] = x;
 		side_effect[1] = y;
 #ifdef WITH_UST
+#ifdef USE_GENERATED_TP
+GENERATED_TP
+#else
 		tracepoint(benchmark_tracepoint, sum, x, y);
+#endif
 #endif
 	}
 

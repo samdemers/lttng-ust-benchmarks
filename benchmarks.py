@@ -81,6 +81,10 @@ def do_benchmark(benchmark):
 		nr_loops = None
 		args = []
 
+	tp_per_loop = 1
+	if "tp_per_loop" in benchmark:
+		tp_per_loop = benchmark["tp_per_loop"]
+
 	base         = run_benchmark_tool(benchmark["baseline"] + args, False)
 	base_start   = base["main"] - base["exec"]
 
@@ -93,11 +97,12 @@ def do_benchmark(benchmark):
 	ust_en_start_overhead = ust_en_start - base_start
 
 	if nr_loops is not None:
+		nr_events           = nr_loops * tp_per_loop
 		base_run            = base["end"] - base["start"]
 		ust_run             = ust["end"] - ust["start"]
-		ust_en_run          = ust_en["end"] - ust_en["start"]		
-		ust_ns_per_event    = (ust_run - base_run)*1E9 / nr_loops
-		ust_en_ns_per_event = (ust_en_run - base_run)*1E9 / nr_loops
+		ust_en_run          = ust_en["end"] - ust_en["start"]
+		ust_ns_per_event    = (ust_run - base_run)*1E9 / nr_events
+		ust_en_ns_per_event = (ust_en_run - base_run)*1E9 / nr_events
 	else:
 		base_run            = None
 		ust_run             = None
@@ -180,6 +185,13 @@ def main():
 			   "nr_loops": 1000000 }
 		data.append({ "sha2": do_benchmark(params) })
 
+	for i in range(full_passes):
+		params = { "baseline": ["basic-benchmark"],
+			   "ust":      ["basic-benchmark-gen-tp"],
+			   "nr_loops": 1000000,
+			   "tp_per_loop": 16}
+		data.append({ "gen-tp": do_benchmark(params) })
+
 	for i in range(fast_passes):
 		params = { "baseline": ["basic-benchmark"],
 			   "ust":      ["basic-benchmark-ust"]}
@@ -189,6 +201,11 @@ def main():
 		params = { "baseline": ["sha2-benchmark"],
 			   "ust":      ["sha2-benchmark-ust"]}
 		data.append({ "sha2": do_benchmark(params) })
+
+	for i in range(fast_passes):
+		params = { "baseline": ["basic-benchmark"],
+			   "ust":      ["basic-benchmark-gen-tp"]}
+		data.append({ "gen-tp": do_benchmark(params) })
 
 	flat_data = []
 	all_keys = set()
