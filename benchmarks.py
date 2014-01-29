@@ -3,6 +3,7 @@
 import collections
 import json, numbers, pprint, platform, tempfile, uuid
 import os, shutil, subprocess, signal
+import linux_cpu
 import lttng
 
 runner_bin  = "./lttng-ust-benchmarks"
@@ -167,11 +168,8 @@ def write_js(data, filename):
 	pprint.pprint(data, f)
 	f.close()
 
-def main():
+def do_benchmarks(full_passes, fast_passes):
 	data = []
-
-	full_passes = 5
-	fast_passes = 100
 
 	for i in range(full_passes):
 		params = { "baseline": ["basic-benchmark"],
@@ -207,34 +205,57 @@ def main():
 			   "ust":      ["basic-benchmark-gen-tp"]}
 		data.append({ "gen-tp": do_benchmark(params) })
 
-	flat_data = []
-	all_keys = set()
-	for pass_data in data:
-		flat_pass_data = flatten_dict(pass_data)
-		flat_data.append(flat_pass_data)
-		all_keys |= flat_pass_data.keys()
+	return data
 
-	avg_data = {}
-	for key in all_keys:
-		total = 0
-		count = 0
-		for flat_pass_data in flat_data:
-			value = flat_pass_data.get(key)
-			if (isinstance(value, numbers.Number)):
-				total += flat_pass_data[key]
-				count += 1
-		if count > 0:
-			avg_data[key] = total / count
+
+def main():
+
+	saved_online_cpus = linux_cpu.online_cpus
+	all_data = {}
+	all_avg = {}
+	for cpu_count in reversed(range(1, linux_cpu.online_count+1)):
+		try:
+			linux_cpu.online_count = cpu_count
+		except:
+			print("Failed to set CPU count, skipping")
+			break
+		
+		data = do_benchmarks(1, 2)
+
+		flat_data = []
+		all_keys = set()
+		for pass_data in data:
+			flat_pass_data = flatten_dict(pass_data)
+			flat_data.append(flat_pass_data)
+			all_keys |= flat_pass_data.keys()
+
+		avg_data = {}
+		for key in all_keys:
+			total = 0
+			count = 0
+			for flat_pass_data in flat_data:
+				value = flat_pass_data.get(key)
+				if (isinstance(value, numbers.Number)):
+					total += flat_pass_data[key]
+					count += 1
+				if count > 0:
+					avg_data[key] = total / count
+
+		cpu_count_key = str(cpu_count)+"_cpus"
+		all_data[cpu_count_key] = data
+		all_avg[cpu_count_key] = avg_data
+
+	linux_cpu.online_cpus = saved_online_cpus
 
 	results = {
-		"data":     data,
-		"average":  avg_data,
+		"data":     all_data,
+		"average":  all_avg,
 		"platform": dict(zip(
 			("system", "node", "release", "version", "machine", "processor"),
 			platform.uname()
 			))
 	}
-	write_plot_properties(avg_data, props_dir)
+	write_plot_properties(flatten_dict(all_avg), props_dir)
 	write_js(results, js_out)
 
 def cleanup():
