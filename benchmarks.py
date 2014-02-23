@@ -3,7 +3,7 @@
 import collections
 import json, numbers, pprint, platform, tempfile, uuid
 import os, shutil, subprocess, signal
-import linux_cpu
+import linux_cpu, lttng_kernel_benchmark
 import lttng
 
 runner_bin  = "./lttng-ust-benchmarks"
@@ -14,7 +14,7 @@ session_name     = str(uuid.uuid1())
 trace_path       = tmp_dir + "/" + session_name
 sessiond_pidfile = tmp_dir + "/lttng-sessiond.pid"
 
-def lttng_start():
+def lttng_start(events = ["*"], domain_type = lttng.DOMAIN_UST):
 	if lttng.session_daemon_alive() == 0:
 		daemon_cmd  = "lttng-sessiond --daemonize --quiet"
 		daemon_cmd += " --pidfile " + sessiond_pidfile
@@ -26,7 +26,7 @@ def lttng_start():
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
 
 	domain = lttng.Domain()
-	domain.type = lttng.DOMAIN_UST
+	domain.type = domain_type
 
 	channel = lttng.Channel()
 	channel.name = "channel0"
@@ -39,14 +39,15 @@ def lttng_start():
 	res = lttng.enable_channel(han, channel)
 	if res < 0:
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
-	
-	event = lttng.Event()
-	event.name = "*"
-	event.type = lttng.EVENT_TRACEPOINT
-	event.loglevel = lttng.EVENT_LOGLEVEL_ALL
-	ret = lttng.enable_event(han, event, channel.name)
-	if ret < 0:
-		raise RuntimeError("LTTng: " + lttng.strerror(ret))
+
+	for name in events:
+		event = lttng.Event()
+		event.name = name
+		event.type = lttng.EVENT_TRACEPOINT
+		event.loglevel = lttng.EVENT_LOGLEVEL_ALL
+		ret = lttng.enable_event(han, event, channel.name)
+		if ret < 0:
+			raise RuntimeError("LTTng: " + lttng.strerror(ret))
 	
 	ret = lttng.start(session_name)
 	if ret < 0:
@@ -73,7 +74,7 @@ def run_benchmark_tool(args, with_ust = False):
 
 	return json.loads(output.decode())
 
-def do_benchmark(benchmark):
+def do_ust_benchmark(benchmark):
 
 	if "nr_loops" in benchmark:
 		nr_loops = benchmark["nr_loops"]
@@ -134,6 +135,24 @@ def do_benchmark(benchmark):
 			}
 		}
 
+def do_kernel_benchmark(nr_loops):
+	base_run = lttng_kernel_benchmark.benchmark(nr_loops)
+
+	lttng_start(lttng_kernel_benchmark.events(), lttng.DOMAIN_KERNEL)
+	tracing_en_run = lttng_kernel_benchmark.benchmark(nr_loops)
+	lttng_stop()
+
+	tracing_en_ns_per_event = (tracing_en_run - base_run)*1E9 / nr_loops
+
+	return {"baseline": {
+			"run_time": base_run
+			},
+		"tracing_enabled": {
+			"run_time":     tracing_en_run,
+			"ns_per_event": tracing_en_ns_per_event
+			}
+		}
+
 def flatten_dict_internal(prefix, data, dst):
 	if issubclass(data.__class__, str):
 		dst[prefix] = data
@@ -175,35 +194,42 @@ def do_benchmarks(full_passes, fast_passes):
 		params = { "baseline": ["basic-benchmark"],
 			   "ust":      ["basic-benchmark-ust"],
 			   "nr_loops": 10000000 }
-		data.append({ "basic": do_benchmark(params) })
+		data.append({ "basic": do_ust_benchmark(params) })
 
 	for i in range(full_passes):
 		params = { "baseline": ["sha2-benchmark"],
 			   "ust":      ["sha2-benchmark-ust"],
 			   "nr_loops": 1000000 }
-		data.append({ "sha2": do_benchmark(params) })
+		data.append({ "sha2": do_ust_benchmark(params) })
 
 	for i in range(full_passes):
 		params = { "baseline": ["basic-benchmark"],
 			   "ust":      ["basic-benchmark-gen-tp"],
 			   "nr_loops": 1000000,
 			   "tp_per_loop": 16}
-		data.append({ "gen-tp": do_benchmark(params) })
+		data.append({ "gen-tp": do_ust_benchmark(params) })
 
 	for i in range(fast_passes):
 		params = { "baseline": ["basic-benchmark"],
 			   "ust":      ["basic-benchmark-ust"]}
-		data.append({ "basic": do_benchmark(params) })
+		data.append({ "basic": do_ust_benchmark(params) })
 
 	for i in range(fast_passes):
 		params = { "baseline": ["sha2-benchmark"],
 			   "ust":      ["sha2-benchmark-ust"]}
-		data.append({ "sha2": do_benchmark(params) })
+		data.append({ "sha2": do_ust_benchmark(params) })
 
 	for i in range(fast_passes):
 		params = { "baseline": ["basic-benchmark"],
 			   "ust":      ["basic-benchmark-gen-tp"]}
-		data.append({ "gen-tp": do_benchmark(params) })
+		data.append({ "gen-tp": do_ust_benchmark(params) })
+
+	try:
+		for i in range(fast_passes):
+			data.append({ "kernel": do_kernel_benchmark(1000000) })
+	except:
+		# We may not even be running as root
+		print("Failed to run kernel benchmark, skipping")
 
 	return data
 
@@ -261,6 +287,7 @@ def main():
 def cleanup():
 	lttng.stop(session_name)
 	lttng.destroy(session_name)
+	lttng_kernel_benchmark.unload_modules()
 
 	try:
 		f = open(sessiond_pidfile, "r")

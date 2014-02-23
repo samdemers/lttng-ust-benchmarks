@@ -9,9 +9,9 @@ ARTIFACTS  = message.tp.c message.tp.h sum.tp.c sum.tp.h \
 RANDOM_TP_COUNT = 16
 RANDOM_TP_OBJ = $(foreach i,$(shell seq $(RANDOM_TP_COUNT)), random_tp_$(i).tp.o)
 
-.PHONY: all clean
+.PHONY: all clean kernel-benchmark
 
-all: $(BIN)
+all: $(BIN) kernel-benchmark
 
 generated_tp.h:
 	./tpgen.py $(RANDOM_TP_COUNT)
@@ -40,6 +40,9 @@ sha2-ust.o: sha2.c
 sha2.o: sha2.c
 	$(CC) -c -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
+kernel-benchmark:
+	make -C kernel-benchmark
+
 # Override implicit rules.
 %.tp:;
 
@@ -49,3 +52,4 @@ sha2.o: sha2.c
 clean:
 	rm -rf $(BIN) $(ARTIFACTS) \
 	*.o random_tp*.tp random_tp*.c random_tp*.h generated_tp.h
+	make -C kernel-benchmark clean
