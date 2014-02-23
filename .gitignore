@@ -17,14 +17,31 @@
 *.out
 *.app
 
-basic-benchmark
-basic-benchmark-ust
+# Python bytecode
+*.pyc
+__pycache__
+
+# Kernel module artifacts
+*.mod.c
+*.mod
+*.o.cmd
+*.ko.cmd
+Module.symvers
+modules.order
+
+# Generated tracepoints
+generated_tp.h
+*.tp.c
+*.tp.h
+
+# Generated data
 *.json
 jenkins_plot_data/
-lttng-ust-benchmarks
-message.tp.c
-message.tp.h
+
+# Specific executables
+basic-benchmark
+basic-benchmark-ust
+basic-benchmark-gen-tp
 sha2-benchmark
 sha2-benchmark-ust
-sum.tp.c
-sum.tp.h
+lttng-ust-benchmarks
