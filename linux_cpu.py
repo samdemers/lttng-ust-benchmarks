@@ -6,8 +6,14 @@ class _LinuxCpu(object):
 
 	def _read_cpu_file(self, filename):
 		f = open(filename, "r");
-		cpus = f.read().rstrip()
-		return set() if len(cpus) == 0 else {int(n) for n in cpus.split("-")}
+		cpus = set()
+		for cpu_range in filter(None, f.read().rstrip().split(",")):
+			if "-" in cpu_range:
+				l, r = cpu_range.split("-")
+				cpus |= set(range(int(l), int(r)+1))
+			else:
+				cpus |= {int(cpu_range)}
+		return cpus
 
 	def _set_cpu_online(self, cpu_id, online):
 		f = open("/sys/devices/system/cpu/cpu{}/online".format(cpu_id), "w")
