@@ -36,8 +36,8 @@ def lttng_start(events = ["*"], domain_type = lttng.DOMAIN_UST):
 	if han is None:
 		raise RuntimeError("LTTng: failed to create handle")
 
-	res = lttng.enable_channel(han, channel)
-	if res < 0:
+	ret = lttng.enable_channel(han, channel)
+	if ret < 0:
 		raise RuntimeError("LTTng: " + lttng.strerror(ret))
 
 	for name in events:
@@ -121,7 +121,16 @@ def do_ust_benchmark(benchmark):
 			ust_run    += ust["end"] - ust["start"]
 			ust_en_run += ust_en["end"] - ust_en["start"]
 
+	base_start            /= len(base_all)
+	ust_start             /= len(base_all)
+	ust_start_overhead    /= len(base_all)
+	ust_en_start          /= len(base_all)
+	ust_en_start_overhead /= len(base_all)
+
 	if nr_loops is not None:
+		base_run   /= len(base_all)
+		ust_run    /= len(base_all)
+		ust_en_run /= len(base_all)
 		nr_events           = nr_loops * tp_per_loop
 		ust_ns_per_event    = (ust_run - base_run)*1E9 / nr_events
 		ust_en_ns_per_event = (ust_en_run - base_run)*1E9 / nr_events
@@ -161,6 +170,10 @@ def do_kernel_benchmark(nr_loops):
 	lttng_start(lttng_kernel_benchmark.events(), lttng.DOMAIN_KERNEL)
 	tracing_en_run = lttng_kernel_benchmark.benchmark(nr_loops)
 	lttng_stop()
+
+	cpu_count = linux_cpu.online_count
+	tracing_en_run /= cpu_count
+	base_run /= cpu_count
 
 	tracing_en_ns_per_event = (tracing_en_run - base_run)*1E9 / nr_loops
 
@@ -256,7 +269,6 @@ def do_benchmarks(full_passes, fast_passes):
 
 def main():
 
-	saved_online_cpus = linux_cpu.online_cpus
 	all_data = {}
 	all_avg = {}
 	for cpu_count in reversed(range(1, linux_cpu.online_count+1)):
@@ -291,8 +303,6 @@ def main():
 		all_data[cpu_count_key] = data
 		all_avg[cpu_count_key] = avg_data
 
-	linux_cpu.online_cpus = saved_online_cpus
-
 	results = {
 		"data":     all_data,
 		"average":  all_avg,
@@ -324,9 +334,11 @@ def cleanup():
 	shutil.rmtree(tmp_dir, True)
 		
 if __name__ == "__main__":
+	saved_online_cpus = linux_cpu.online_cpus
 	try:
 		main()
 	except KeyboardInterrupt:
 		pass
 	finally:
 		cleanup()
+		linux_cpu.online_cpus = saved_online_cpus
