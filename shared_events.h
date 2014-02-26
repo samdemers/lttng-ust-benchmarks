@@ -21,6 +21,7 @@
 #define SHARED_EVENTS_H
 
 #include <sys/time.h>
+#include <sys/types.h>
 
 #define MAX_EVENT_NAME_LENGTH 256
 
@@ -29,9 +30,12 @@ struct shared_event {
 	char name[MAX_EVENT_NAME_LENGTH];
 };
 
-void shared_events_delete(void);
+void shared_events_close(void);
+int shared_events_open(pid_t pid);
+void shared_events_delete(pid_t pid);
 int shared_events_clear(void);
 int shared_events_add(const char *name);
 struct shared_event *shared_events_read(void);
+int shared_events_rewind(void);
 	
 #endif /* SHARED_EVENTS_H */

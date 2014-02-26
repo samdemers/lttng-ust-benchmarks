@@ -33,92 +33,111 @@
 #include "shared_events.h"
 
 #define MAX_EVENT_COUNT 256
-#define EVENTS_SHM_NAME "/shared_events"
+#define MAX_SHM_NAME_LEN 32
+#define SHM_BASE_NAME "/shared_events"
 
 struct shared_events {
 	size_t count;
 	struct shared_event events[MAX_EVENT_COUNT];
 };
 
-static int shm_fd = -1;
-static struct shared_events *events = NULL;
-static int events_rptr = 0;
+struct shared_events_ctx {
+	char name[MAX_SHM_NAME_LEN];
+	int fd;
+	struct shared_events *events;
+	int rptr;
+};
 
-static
-void shared_events_close(void)
+static struct shared_events_ctx *ctx = NULL;
+
+static void shm_name(char *buf, size_t max_len, pid_t pid)
 {
-	if (events && munmap(events, sizeof(struct shared_events)) == -1)
-		perror("munmap");
-
-	if (shm_fd != -1 && close(shm_fd) == -1)
-		perror("close");
-
-	shm_fd = -1;
-	events = NULL;
-	events_rptr = 0;
+	snprintf(buf, max_len, "%s_%d", SHM_BASE_NAME, pid);
 }
 
-static
-int shared_events_init(void)
+void shared_events_close()
 {
+	if (!ctx)
+		return;
+
+	if (munmap(ctx->events, sizeof(struct shared_events)) == -1)
+		perror("munmap");
+
+	if (close(ctx->fd) == -1)
+		perror("close");
+
+	free(ctx);
+	ctx = NULL;
+}
+
+int shared_events_open(pid_t pid)
+{
+	if (ctx)
+		return 0;
+
 	int shm_created = 0;
 	mode_t mode = S_IRUSR | S_IWUSR;
 
-	if (shm_fd != -1)
-		return 0;
+	ctx = (struct shared_events_ctx *)
+		malloc(sizeof(struct shared_events_ctx));
+	if (!ctx) {
+		perror("malloc");
+		return -1;
+	}
+	shm_name(ctx->name, MAX_SHM_NAME_LEN, pid);
 
-	shm_fd = shm_open(EVENTS_SHM_NAME, O_RDWR, mode);
+	ctx->fd = shm_open(ctx->name, O_RDWR, mode);
 	if (errno == ENOENT) {
 		shm_created = 1;
-		shm_fd = shm_open(EVENTS_SHM_NAME, O_RDWR | O_CREAT, mode);
+		ctx->fd = shm_open(ctx->name, O_RDWR | O_CREAT, mode);
 	}
-	if (shm_fd == -1) {
+	if (ctx->fd == -1) {
 		perror("shm_open");
 		return -1;
 	}
 
-	if (ftruncate(shm_fd, sizeof(struct shared_events)) == -1) {
+	if (ftruncate(ctx->fd, sizeof(struct shared_events)) == -1) {
 		perror("ftruncate");
 		shared_events_close();
 		if (shm_created)
-			shared_events_delete();
+			shared_events_delete(pid);
 		return -1;
 	}
 	
-	events = mmap(NULL, sizeof(struct shared_events),
-			PROT_READ | PROT_WRITE, MAP_SHARED,
-			shm_fd, 0);
-	if (events == MAP_FAILED) {
+	ctx->events = mmap(NULL, sizeof(struct shared_events),
+				PROT_READ | PROT_WRITE, MAP_SHARED,
+				ctx->fd, 0);
+	if (ctx->events == MAP_FAILED) {
 		perror("mmap");
 		shared_events_close();
 		if (shm_created)
-			shared_events_delete();
+			shared_events_delete(pid);
 		return -1;
 	}
 
-	atexit(shared_events_close);
 	return 0;
 }
 
-void shared_events_delete(void)
+void shared_events_delete(pid_t pid)
 {
-	shared_events_close();
-	if (shm_unlink(EVENTS_SHM_NAME) == -1)
+	char name[MAX_SHM_NAME_LEN];
+	shm_name(ctx->name, MAX_SHM_NAME_LEN, pid);
+	if (shm_unlink(name) == -1)
 		perror("shm_unlink");
 }
 
 int shared_events_clear(void)
 {
-	if (shared_events_init() == -1)
+	if (!ctx && shared_events_open(getpid()) == -1)
 		return -1;
-	assert(events);
-	events->count = 0;
+	assert(ctx->events);
+	ctx->events->count = 0;
 	return 0;
 }
 
 int shared_events_add(const char *name)
 {
-	struct timespec *ts, tmpts;
+	struct timespec tmpts;
 	struct shared_event *event;
 	int ret;
 
@@ -133,18 +152,18 @@ int shared_events_add(const char *name)
 		return -1;
 	}
 
-	if (shared_events_init() == -1)
+	if (!ctx && shared_events_open(getpid()) == -1)
 		return -1;
 
 	assert(events);
-	if (events->count == MAX_EVENT_COUNT) {
+	if (ctx->events->count == MAX_EVENT_COUNT) {
 		fprintf(stderr, "Event buffer is full\n");
 		return -1;
 	}
 
-	event = &events->events[events->count];
+	event = &ctx->events->events[ctx->events->count];
 	strncpy(event->name, name, MAX_EVENT_NAME_LENGTH);
-	events->count++;
+	ctx->events->count++;
 
 	if (!strcmp(name, "start")) {
 		/*
@@ -168,10 +187,19 @@ int shared_events_add(const char *name)
 
 struct shared_event *shared_events_read(void)
 {
-	if (shared_events_init() == -1)
-		return (struct shared_event *) -1;
-	assert(events);
-	if (events_rptr == events->count)
+	if (!ctx && shared_events_open(getpid()) == -1)
+		return (struct shared_event *)-1;
+	assert(ctx->events);
+	if (ctx->rptr == ctx->events->count)
 		return NULL;
-	return &events->events[events_rptr++];
+	return &ctx->events->events[ctx->rptr++];
+}
+
+int shared_events_rewind(void)
+{
+	if (!ctx && shared_events_open(getpid()) == -1)
+		return -1;
+	assert(ctx->events);
+	ctx->rptr = 0;
+	return 0;
 }

@@ -87,22 +87,42 @@ def do_ust_benchmark(benchmark):
 	if "tp_per_loop" in benchmark:
 		tp_per_loop = benchmark["tp_per_loop"]
 
-	base         = run_benchmark_tool(benchmark["baseline"] + args, False)
-	base_start   = base["main"] - base["exec"]
+	base_all   = run_benchmark_tool(benchmark["baseline"] + args, False)
+	ust_all    = run_benchmark_tool(benchmark["ust"] + args, False)
+	ust_en_all = run_benchmark_tool(benchmark["ust"] + args, True)
 
-	ust          = run_benchmark_tool(benchmark["ust"] + args, False)
-	ust_start    = ust["main"] - ust["exec"]
-	ust_start_overhead = ust_start - base_start
+	base_start = 0
+	ust_start = 0
+	ust_start_overhead = 0
+	ust_en_start = 0
+	ust_en_start_overhead = 0
 
-	ust_en       = run_benchmark_tool(benchmark["ust"] + args, True)
-	ust_en_start = ust_en["main"] - ust_en["exec"]
-	ust_en_start_overhead = ust_en_start - base_start
+	base_run            = 0
+	ust_run             = 0
+	ust_en_run          = 0
+	ust_ns_per_event    = 0
+	ust_en_ns_per_event = 0
+
+	for i in range(len(base_all)):
+		base   = base_all[i]
+		ust    = ust_all[i]
+		ust_en = ust_en_all[i]
+
+		base_start += base["main"] - base["exec"]
+
+		ust_start += ust["main"] - ust["exec"]
+		ust_start_overhead += ust_start - base_start
+
+		ust_en_start += ust_en["main"] - ust_en["exec"]
+		ust_en_start_overhead += ust_en_start - base_start
+
+		if nr_loops is not None:
+			base_run   += base["end"] - base["start"]
+			ust_run    += ust["end"] - ust["start"]
+			ust_en_run += ust_en["end"] - ust_en["start"]
 
 	if nr_loops is not None:
 		nr_events           = nr_loops * tp_per_loop
-		base_run            = base["end"] - base["start"]
-		ust_run             = ust["end"] - ust["start"]
-		ust_en_run          = ust_en["end"] - ust_en["start"]
 		ust_ns_per_event    = (ust_run - base_run)*1E9 / nr_events
 		ust_en_ns_per_event = (ust_en_run - base_run)*1E9 / nr_events
 	else:
@@ -225,7 +245,7 @@ def do_benchmarks(full_passes, fast_passes):
 		data.append({ "gen-tp": do_ust_benchmark(params) })
 
 	try:
-		for i in range(fast_passes):
+		for i in range(full_passes):
 			data.append({ "kernel": do_kernel_benchmark(1000000) })
 	except:
 		# We may not even be running as root
