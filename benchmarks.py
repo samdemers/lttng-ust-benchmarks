@@ -266,7 +266,7 @@ def main():
 			print("Failed to set CPU count, skipping")
 			break
 		
-		data = do_benchmarks(1, 2)
+		data = do_benchmarks(5, 100)
 
 		flat_data = []
 		all_keys = set()
